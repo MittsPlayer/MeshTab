@@ -6,6 +6,13 @@
 <meta name="theme-color" content="#0c1426">
 <title>MeshTab</title>
 <link rel="icon" href="logo.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MeshTab">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="MeshTab: editor de modelação 3D no navegador, inspirado no Blender.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&display=swap" rel="stylesheet">
 <style>
@@ -52,6 +59,11 @@ input[type=range]{accent-color:var(--cy);padding:0}
 .off{opacity:.35;pointer-events:none}
 #pop{position:fixed;z-index:20;background:var(--p);border:1px solid var(--ln);border-radius:10px;padding:5px;display:flex;flex-direction:column;gap:3px;min-width:140px;box-shadow:0 8px 24px #0009}
 #pop button{justify-content:flex-start}
+#views{max-width:calc(100% - 76px)}
+#nav{position:absolute;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0));display:flex;flex-direction:column;gap:8px}
+#nav button{width:50px;height:50px;border-radius:50%;background:#121c33d9;border:1px solid var(--ln);touch-action:none;cursor:grab}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:30;max-width:90%;background:var(--p2);border:1px solid var(--cy);padding:10px 14px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .3s;text-align:center}
+#toast.show{opacity:1}
 /* loading */
 #load{position:fixed;inset:0;z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(circle at 50% 40%,#12234a,#0a1020 70%);transition:opacity .6s,visibility .6s}
 #load.out{opacity:0;visibility:hidden}
@@ -68,6 +80,7 @@ input[type=range]{accent-color:var(--cy);padding:0}
 </head>
 <body>
 <div id="load"><img src="logo.png" alt=""><h1>MeshTab</h1><div id="track"><div id="bar"></div></div><p id="ldt"></p></div>
+<div id="toast" role="status"></div>
 <div id="app">
 <header>
  <img class="brand" src="logo.png" alt="MeshTab">
@@ -84,18 +97,23 @@ input[type=range]{accent-color:var(--cy);padding:0}
  <button id="bSn" data-ic="magnet" title="Snap"></button>
  <button id="bU" data-ic="undo" title="Desfazer (Ctrl+Z)"></button>
  <button id="bR" data-ic="redo" title="Refazer"></button><i></i>
+ <button id="bInst" data-ic="install" title="Instalar app" hidden></button>
+ <button id="bI" data-ic="import" title="Importar modelo"></button>
  <button id="bEx" class="go" data-ic="export" title="Exportar"></button>
  <button id="bP" data-ic="sliders" title="Propriedades"></button>
 </header>
 <div id="main">
  <aside id="L"></aside>
  <div id="vp"><canvas></canvas><div id="info"></div>
+  <div id="nav"><button data-n="orbit" data-ic="rotate" title="Orbitar: arraste"></button><button data-n="pan" data-ic="move" title="Mover câmera: arraste"></button><button data-n="zoom" data-ic="zoom" title="Zoom: arraste"></button></div>
+  <input type="file" id="fi" multiple hidden accept=".obj,.fbx,.glb,.gltf,.stl,.ply,.blend">
   <div id="views">
    <button data-v="0,0,1" data-ic="vfront" title="Frente"></button>
    <button data-v="1,0,0" data-ic="vright" title="Direita"></button>
    <button data-v="0,1,.0001" data-ic="vtop" title="Topo"></button>
    <button id="bO" data-ic="layers" title="Ortográfica"></button>
    <button id="bF" data-ic="focus" title="Focar (F)"></button>
+   <button id="bV" data-ic="frame" title="Ver tudo (Home)"></button>
    <button id="bW" data-ic="cube" title="Wireframe"></button>
   </div>
  </div>
@@ -110,10 +128,16 @@ input[type=range]{accent-color:var(--cy);padding:0}
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/OBJExporter.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PLYLoader.js"></script>
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const cubeP='<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"/>';
-const IC={list:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+const IC={list:'<path d="M4 6h16M4 12h16M4 18h16"/>',install:'<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M12 8v6M9.5 11.5L12 14l2.5-2.5"/>',import:'<path d="M12 15V3M7 8l5-5 5 5M4 20h16"/>',zoom:'<circle cx="11" cy="11" r="6"/><path d="M16 16l5 5M9 11h4M11 9v4"/>',frame:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
 move:'<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
 rotate:'<path d="M20 12a8 8 0 1 1-3-6.2M20 4v5h-5"/>',scale:'<path d="M4 20L20 4M4 20h6M4 20v-6M20 4h-6M20 4v6"/>',
 vertex:'<circle cx="6" cy="6" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="9" cy="18" r="2"/><path d="M8 6h8M7 8l2 8M16.5 10L11 17"/>',
@@ -147,7 +171,7 @@ const key=new THREE.DirectionalLight(0xffffff,.9);key.position.set(1,2,3);camera
 scene.add(new THREE.HemisphereLight(0xffffff,0x444444,.7),new THREE.GridHelper(20,20,0x4d7cff,0x2a3d68),new THREE.AxesHelper(1.5));
 const root=new THREE.Group();scene.add(root);
 const orbit=new THREE.OrbitControls(camera,cv);orbit.enableDamping=true;
-const tc=new THREE.TransformControls(camera,cv);tc.size=innerWidth<800?1.3:1;scene.add(tc);
+const tc=new THREE.TransformControls(camera,cv);tc.size=innerWidth<800?1.7:1.2;scene.add(tc);
 tc.addEventListener('dragging-changed',e=>{orbit.enabled=!e.value;if(!e.value){if(E)setPivot();commit()}});
 const box=new THREE.BoxHelper(new THREE.Object3D(),0xff7a00);box.visible=false;scene.add(box);
 let sel=null,E=null,lock=false,addSel=false,wire=false,ortho=false,H=[],hi=-1;
@@ -255,10 +279,11 @@ function pop(btn,items){const o=$('#pop');if(o){o.remove();if(o._b===btn)return}
  items.forEach(([i,t,f])=>{const b=document.createElement('button');b.innerHTML=ic(i)+'<span>'+t+'</span>';b.onclick=()=>{p.remove();f()};p.append(b)});document.body.append(p)}
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#pop,header'))$('#pop')?.remove()});
 $('#bA').onclick=e=>pop(e.currentTarget,Object.keys(PR).map(k=>[PI[k],k,()=>add(k)]));
-$('#bEx').onclick=e=>pop(e.currentTarget,['glb','gltf','obj','stl','fbx'].map(f=>['export','.'+f,()=>exp(f)]));
+$('#bEx').onclick=e=>pop(e.currentTarget,['glb','gltf','obj','stl','fbx','blend'].map(f=>['export','.'+f+(f=='blend'?' (script)':''),()=>exp(f)]));
 
 /* ---------- Vistas ---------- */
-$$('[data-v]').forEach(b=>b.onclick=()=>{const t=orbit.target,d=camera.position.distanceTo(t),v=new THREE.Vector3(...b.dataset.v.split(',').map(Number)).normalize();camera.position.copy(t).addScaledVector(v,d);camera.lookAt(t);orbit.update()});
+function setView(str,neg){const t=orbit.target,d=camera.position.distanceTo(t),v=new THREE.Vector3(...str.split(',').map(Number)).normalize();if(neg)v.negate();camera.position.copy(t).addScaledVector(v,d);camera.lookAt(t);orbit.update()}
+$$('#views [data-v]').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 $('#bO').onclick=e=>{const t=orbit.target,d=camera.position.distanceTo(t),f1=ortho?50:4,k=Math.tan(camera.fov*Math.PI/360)/Math.tan(f1*Math.PI/360);
  camera.fov=f1;camera.position.copy(t).addScaledVector(camera.position.clone().sub(t).normalize(),d*k);camera.updateProjectionMatrix();ortho=!ortho;e.currentTarget.classList.toggle('on',ortho);orbit.update()};
 function focus(){if(!sel)return;const c=new THREE.Box3().setFromObject(sel).getCenter(new THREE.Vector3()),o=camera.position.clone().sub(orbit.target);orbit.target.copy(c);camera.position.copy(c).add(o)}
@@ -272,7 +297,77 @@ addEventListener('keydown',e=>{if(/INPUT|TEXTAREA/.test(e.target.tagName))return
  else if(k=='g')mode('translate');else if(k=='r')mode('rotate');else if(k=='s')mode('scale');
  else if(k=='tab'){e.preventDefault();E?exitEdit():enterEdit()}else if(k=='x'||k=='delete')del();else if(k=='f')focus();
  else if(k=='a'&&E){E.groups.forEach((_,i)=>E.sel.add(i));setPivot()}
- else if(e.code=='Numpad1')$('[data-v="0,0,1"]').click();else if(e.code=='Numpad3')$('[data-v="1,0,0"]').click();else if(e.code=='Numpad7')$('[data-v="0,1,.0001"]').click();else if(e.code=='Numpad5')$('#bO').click()});
+ else if(/^Numpad[137]$/.test(e.code))setView({Numpad1:'0,0,1',Numpad3:'1,0,0',Numpad7:'0,1,.0001'}[e.code],e.ctrlKey)
+ else if(e.code=='Numpad5')$('#bO').click();else if(e.code=='Home')viewAll();else if(e.code=='NumpadDecimal')focus();
+ else if(NK[e.code]){const[t,a,b]=NK[e.code];e.ctrlKey&&t=='orbit'?navCam('pan',-a*40,-b*40):t=='orbit'?navCam(t,a*26,b*26):navCam(t,0,b*10)}});
+
+/* ---------- Câmera estilo Blender, importação ---------- */
+const NK={Numpad4:['orbit',-1,0],Numpad6:['orbit',1,0],Numpad8:['orbit',0,-1],Numpad2:['orbit',0,1],NumpadAdd:['zoom',0,-1],NumpadSubtract:['zoom',0,1]};
+function navCam(t,dx,dy){const tg=orbit.target,o=camera.position.clone().sub(tg);
+ if(t=='orbit'){const q=new THREE.Spherical().setFromVector3(o);q.theta-=dx*.01;q.phi=Math.min(Math.max(q.phi-dy*.01,.01),Math.PI-.01);o.setFromSpherical(q)}
+ else if(t=='zoom')o.multiplyScalar(Math.max(.05,1+dy*.01));
+ else{const f=2*o.length()*Math.tan(camera.fov*Math.PI/360)/vp.clientHeight*1.6,x=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0),y=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1),d=x.multiplyScalar(-dx*f).addScaledVector(y,dy*f);tg.add(d)}
+ camera.position.copy(tg).add(o);camera.lookAt(tg);orbit.update()}
+$$('[data-n]').forEach(b=>{let px,py;b.onpointerdown=e=>{b.setPointerCapture(e.pointerId);px=e.clientX;py=e.clientY;b.classList.add('on')};
+ b.onpointermove=e=>{if(!b.hasPointerCapture(e.pointerId))return;navCam(b.dataset.n,e.clientX-px,e.clientY-py);px=e.clientX;py=e.clientY};
+ b.onpointerup=b.onpointercancel=()=>b.classList.remove('on')});
+function viewAll(){const bb=new THREE.Box3().setFromObject(root);if(bb.isEmpty())return;const q=bb.getBoundingSphere(new THREE.Sphere()),d=camera.position.clone().sub(orbit.target).normalize();
+ orbit.target.copy(q.center);camera.position.copy(q.center).addScaledVector(d,Math.max(q.radius,.3)*1.2/Math.sin(camera.fov*Math.PI/360));orbit.update()}
+$('#bV').onclick=viewAll;
+let tt;function toast(t,ms=5000){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('show'),ms)}
+function imp(files){[...files].forEach(f=>{const ext=f.name.split('.').pop().toLowerCase();
+ if(ext=='blend')return toast('O .blend é um formato binário interno do Blender e o navegador não consegue lê-lo. No Blender use Arquivo → Exportar → glTF (.glb), FBX ou OBJ e importe aqui.',10000);
+ if(!['obj','fbx','glb','gltf','stl','ply'].includes(ext))return toast('Formato não suportado: .'+ext);
+ const r=new FileReader();r.onerror=()=>toast('Erro ao ler '+f.name);
+ r.onload=()=>{try{let o;
+  if(ext=='obj')o=new THREE.OBJLoader().parse(r.result);
+  else if(ext=='fbx')o=new THREE.FBXLoader().parse(r.result,'');
+  else if(ext=='stl'||ext=='ply')o=new THREE.Mesh(ext=='stl'?new THREE.STLLoader().parse(r.result):new THREE.PLYLoader().parse(r.result),mk());
+  else return new THREE.GLTFLoader().parse(r.result,'',g=>place(g.scene,f.name),()=>toast('Erro ao importar '+f.name));
+  place(o,f.name)}catch(err){console.error(err);toast('Erro ao importar '+f.name)}};
+ ext=='obj'||ext=='gltf'?r.readAsText(f):r.readAsArrayBuffer(f)})}
+function place(o,file){o.updateMatrixWorld(true);const ms=[];o.traverse(m=>{if(m.isMesh&&m.geometry&&m.geometry.attributes.position)ms.push(m)});
+ if(!ms.length)return toast('Nenhuma malha encontrada em '+file);
+ const gs=ms.map(m=>{const g=m.geometry.clone();g.applyMatrix4(m.matrixWorld);for(const k in g.attributes)if(!['position','normal','uv'].includes(k))g.deleteAttribute(k);g.morphAttributes={};return g}),bb=new THREE.Box3();
+ gs.forEach(g=>{g.computeBoundingBox();bb.union(g.boundingBox)});
+ const c=bb.getCenter(new THREE.Vector3()),sz=Math.max(...bb.getSize(new THREE.Vector3()).toArray()),k=sz>20||sz<.1?2/sz:1;let last;
+ ms.forEach((m,i)=>{const g=gs[i];g.scale(k,k,k);g.translate(-c.x*k,-bb.min.y*k,-c.z*k);if(!g.attributes.normal)g.computeVertexNormals();
+  g.computeBoundingBox();const ct=g.boundingBox.getCenter(new THREE.Vector3());g.translate(-ct.x,-ct.y,-ct.z);
+  const sm=Array.isArray(m.material)?m.material[0]:m.material,mt=mk();if(sm&&sm.color)mt.color.copy(sm.color);if(sm&&sm.roughness!=null)mt.roughness=sm.roughness;if(sm&&sm.metalness!=null)mt.metalness=sm.metalness;
+  const n=new THREE.Mesh(g,mt);n.name=uniq(m.name||file.replace(/\.[^.]+$/,''));n.position.copy(ct);root.add(n);last=n});
+ select(last);commit();viewAll();toast(ms.length+' objeto(s) importado(s)'+(k!=1?' (escala ajustada)':''))}
+$('#bI').onclick=()=>$('#fi').click();$('#fi').onchange=e=>{imp(e.target.files);e.target.value=''};
+vp.addEventListener('dragover',e=>e.preventDefault());vp.addEventListener('drop',e=>{e.preventDefault();imp(e.dataTransfer.files)});
+const PYH=`# Gerado pelo MeshTab.
+# Blender: aba Scripting > Abrir > Executar (Alt+P) para criar a cena.
+# Ou no terminal: blender -b -P meshtab_para_blend.py  (gera MeshTab.blend ao lado do script)
+import bpy, os
+from mathutils import Matrix
+if bpy.app.background:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+def lin(c): return c/12.92 if c<=0.04045 else ((c+0.055)/1.055)**2.4
+def mk(name,V,F,M,col,rg,mt,smooth):
+    me=bpy.data.meshes.new(name)
+    me.from_pydata(list(zip(V[0::3],V[1::3],V[2::3])),[],list(zip(F[0::3],F[1::3],F[2::3])))
+    me.update(); me.validate()
+    for p in me.polygons: p.use_smooth=smooth
+    ob=bpy.data.objects.new(name,me)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.matrix_world=Matrix(M)
+    ma=bpy.data.materials.new(name); ma.use_nodes=True
+    b=ma.node_tree.nodes["Principled BSDF"]
+    b.inputs["Base Color"].default_value=(lin(col[0]),lin(col[1]),lin(col[2]),1)
+    b.inputs["Roughness"].default_value=rg; b.inputs["Metallic"].default_value=mt
+    me.materials.append(ma)
+`,PYT=`if bpy.app.background:
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.path.dirname(os.path.abspath(__file__)),"MeshTab.blend"))
+`;
+function blendPy(){const C=new THREE.Matrix4().set(1,0,0,0,0,0,-1,0,0,1,0,0,0,0,0,1),Ci=C.clone().invert(),f=n=>+n.toFixed(5),o=[];
+ root.children.forEach(m=>{if(!m.visible)return;m.updateMatrix();const g=m.geometry,p=g.attributes.position,ix=g.index?Array.from(g.index.array):Array.from({length:p.count},(_,i)=>i),v=new THREE.Vector3(),V=[];
+  for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(C);V.push(f(v.x),f(v.y),f(v.z))}
+  const B=C.clone().multiply(m.matrix).multiply(Ci).elements,M=[0,1,2,3].map(r=>'('+[0,4,8,12].map(c=>f(B[c+r])).join(',')+')').join(','),k=m.material,c=k.color;
+  o.push('mk('+JSON.stringify(m.name)+',['+V+'],['+ix+'],('+M+'),('+f(c.r)+','+f(c.g)+','+f(c.b)+'),'+f(k.roughness)+','+f(k.metalness)+','+(k.flatShading?'False':'True')+')')});
+ return PYH+o.join('\n')+'\n'+PYT}
 
 /* ---------- Exportação ---------- */
 function dl(d,n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([d],{type:t}));a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5e3)}
@@ -280,6 +375,7 @@ function exp(f){exitEdit();if(!root.children.length)return alert('A cena está v
  if(f=='glb'||f=='gltf')new THREE.GLTFExporter().parse(root,r=>f=='glb'?dl(r,'modelo.glb','model/gltf-binary'):dl(JSON.stringify(r),'modelo.gltf','model/gltf+json'),{binary:f=='glb'});
  else if(f=='obj')dl(new THREE.OBJExporter().parse(root),'modelo.obj','text/plain');
  else if(f=='stl')dl(new THREE.STLExporter().parse(root,{binary:true}),'modelo.stl','model/stl');
+ else if(f=='blend'){dl(blendPy(),'meshtab_para_blend.py','text/x-python');toast('Script gerado. No Blender: Scripting → Abrir → Executar. Ou: blender -b -P meshtab_para_blend.py cria o MeshTab.blend.',10000)}
  else dl(fbx(),'modelo.fbx','application/octet-stream')}
 
 /* FBX 7.4 binário escrito à mão (malhas, transformações e cor difusa) */
@@ -317,6 +413,11 @@ renderer.setAnimationLoop(()=>{orbit.update();if(sel&&!E&&box.visible)box.update
 add('Cubo');
 </script>
 <script>
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+(()=>{let ip;const bi=document.getElementById('bInst');
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();ip=e;bi.hidden=false});
+bi.onclick=async()=>{if(!ip)return;ip.prompt();await ip.userChoice;ip=null;bi.hidden=true};
+addEventListener('appinstalled',()=>bi.hidden=true)})();
 (()=>{const ld=document.getElementById('load'),bar=document.getElementById('bar');
 const done=()=>{if(!window.THREE){document.getElementById('ldt').textContent='Não foi possível carregar o motor 3D. Verifique a ligação.';return}
 bar.style.animation='none';bar.style.width='100%';setTimeout(()=>{ld.classList.add('out');setTimeout(()=>ld.remove(),700)},350)};

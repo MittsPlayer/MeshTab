@@ -1,0 +1,38 @@
+{
+  "name": "MeshTab",
+  "short_name": "MeshTab",
+  "description": "Editor de modelação 3D no navegador, inspirado no Blender.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "pt",
+  "background_color": "#0c1426",
+  "theme_color": "#0c1426",
+  "categories": [
+    "graphics",
+    "design",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
